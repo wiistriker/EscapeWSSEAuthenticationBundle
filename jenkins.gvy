@@ -1,7 +1,7 @@
 def project_owner = "escapestudios"
 def project_name = "EscapeWSSEAuthenticationBundle"
 def project = project_owner + "/" + project_name
-def branches = [ "master" ] as String[]
+def branches = [ "2.0.x", "2.1.x", "2.2.x", "master" ] as String[]
 
 branches.each {
     def branch = it
