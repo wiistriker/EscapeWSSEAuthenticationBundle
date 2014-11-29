@@ -1,15 +1,14 @@
-def project_owner = "escapestudios"
-def project_name = "EscapeWSSEAuthenticationBundle"
-def project = project_owner + "/" + project_name
+def repo_owner = "escapestudios"
+def repo_name = "EscapeWSSEAuthenticationBundle"
 def branches = [ "2.1.x", "2.2.x", "master" ] as String[]
 
 branches.each {
     def branch = it
 
     job {
-      name "${project}_${branch}".replaceAll("/","-")
+      name "${repo_owner}/${repo_name}_${branch}".replaceAll("/","-")
       scm {
-        git("git://github.com/${project}.git", branch)
+        git("git://github.com/${repo_owner}/${repo_name}.git", branch)
       }
       triggers {
         githubPush()
