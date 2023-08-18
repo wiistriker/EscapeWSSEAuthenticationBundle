@@ -2,11 +2,11 @@
 
 namespace Escape\WSSEAuthenticationBundle\Security\Http\Authenticator;
 
+use Escape\WSSEAuthenticationBundle\Security\Core\User\WSSEUserInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\PasswordHasherInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
-use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
 use Symfony\Component\Security\Core\Exception\CredentialsExpiredException;
@@ -117,8 +117,6 @@ class WSSEAuthenticator extends AbstractAuthenticator
      */
     protected function parseWSSEHeader(string $wsse_header): ?array
     {
-        $result = [];
-
         try {
             $result = [
                 'Username' => $this->parseWSSEHeaderValue($wsse_header, 'Username'),
@@ -126,36 +124,43 @@ class WSSEAuthenticator extends AbstractAuthenticator
                 'Nonce' => $this->parseWSSEHeaderValue($wsse_header, 'Nonce'),
                 'Created' => $this->parseWSSEHeaderValue($wsse_header, 'Created')
             ];
-        } catch(UnexpectedValueException $e) {
+        } catch (UnexpectedValueException $e) {
             return null;
         }
 
         return $result;
     }
 
-    protected function isFormattedCorrectly($created)
+    protected function isFormattedCorrectly($created): bool
     {
         return preg_match($this->getDateFormat(), $created);
     }
 
-    protected function isTokenFromFuture($created)
+    protected function isTokenFromFuture($created): bool
     {
         return strtotime($created) > strtotime($this->getCurrentTime());
     }
 
-    protected function getCurrentTime()
+    protected function getCurrentTime(): string
     {
-        return gmdate(DATE_ISO8601);
+        return gmdate(DATE_ATOM);
     }
 
     protected function getSecret(UserInterface $user): string
     {
-        return $user->getApiToken() ?? '';
+        if ($user instanceof WSSEUserInterface) {
+            return $user->getWSSESecret();
+        }
+
+        return $user->getPassword() ?? '';
     }
 
     protected function getSalt(UserInterface $user): string
     {
-        return '';
+        if ($user instanceof WSSEUserInterface) {
+            return $user->getWSSESalt();
+        }
+
         return $user->getSalt() ?? '';
     }
 
