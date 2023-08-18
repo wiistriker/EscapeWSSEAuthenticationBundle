@@ -8,7 +8,7 @@ use Symfony\Component\PasswordHasher\Hasher\MessageDigestPasswordHasher;
 
 class Configuration implements ConfigurationInterface
 {
-    public function getConfigTreeBuilder()
+    public function getConfigTreeBuilder(): TreeBuilder
     {
         $treeBuilder = new TreeBuilder('escape_wsse_authentication');
 
