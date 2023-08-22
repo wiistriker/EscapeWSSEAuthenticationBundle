@@ -8,6 +8,7 @@ use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\Authentic
 use Symfony\Component\Config\Definition\Builder\NodeDefinition;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Reference;
+use Symfony\Component\DependencyInjection\ChildDefinition;
 
 class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterface
 {
@@ -29,7 +30,8 @@ class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterfa
                         ->scalarNode('iterations')->end()
                     ->end()
                 ->end()
-                ->scalarNode('nonce_cache_service_id')->defaultValue(null)->end()
+                ->scalarNode('nonce_cache_service_id')->defaultValue('cache.app')->end()
+                ->scalarNode('failure_handler')->end()
             ->end();
     }
 
@@ -42,11 +44,37 @@ class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterfa
     {
         $authenticatorId = 'security.authenticator.wsse.'.$firewallName;
 
+        $passwordHasherId = 'escape_wsse_authentication.encoder.'.$firewallName;
+        $passwordHasherDefinition = new ChildDefinition('escape_wsse_authentication.encoder');
+
+        if (isset($config['encoder']['algorithm'])) {
+            $passwordHasherDefinition->replaceArgument(0, $config['encoder']['algorithm']);
+        }
+
+        if (isset($config['encoder']['encodeHashAsBase64'])) {
+            $passwordHasherDefinition->replaceArgument(1, $config['encoder']['encodeHashAsBase64']);
+        }
+
+        if(isset($config['encoder']['iterations'])) {
+            $passwordHasherDefinition->replaceArgument(2, $config['encoder']['iterations']);
+        }
+
+        $container->setDefinition($passwordHasherId, $passwordHasherDefinition);
+
+        $authenticator_config = [
+            'date_format' => $config['date_format'],
+            'lifetime' => $config['lifetime'],
+            'realm' => $config['realm'],
+            'profile' => $config['profile']
+        ];
+
         $container
             ->register($authenticatorId, WSSEAuthenticator::class)
             ->addArgument(new Reference($userProviderId))
-            ->addArgument(new Reference('escape_wsse_authentication.encoder'))
-            ->addArgument($config)
+            ->addArgument(new Reference($passwordHasherId))
+            ->addArgument(new Reference($config['nonce_cache_service_id']))
+            ->addArgument(new Reference($this->createAuthenticationFailureHandler($container, $firewallName, $config)))
+            ->addArgument($authenticator_config)
         ;
 
         return $authenticatorId;

@@ -3,6 +3,7 @@
 namespace Escape\WSSEAuthenticationBundle\Security\Http\Authenticator;
 
 use Escape\WSSEAuthenticationBundle\Security\Core\User\WSSEUserInterface;
+use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\PasswordHasher\PasswordHasherInterface;
@@ -10,37 +11,40 @@ use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
 use Symfony\Component\Security\Core\Exception\CredentialsExpiredException;
+use Symfony\Component\Security\Core\Exception\CustomUserMessageAuthenticationException;
 use Symfony\Component\Security\Core\Exception\UserNotFoundException;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
+use Symfony\Component\Security\Http\Authentication\AuthenticationFailureHandlerInterface;
 use Symfony\Component\Security\Http\Authenticator\AbstractAuthenticator;
 use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
 use Symfony\Component\Security\Http\Authenticator\Passport\PassportInterface;
 use Symfony\Component\Security\Http\Authenticator\Passport\SelfValidatingPassport;
+use Symfony\Component\Security\Http\EntryPoint\AuthenticationEntryPointInterface;
 
-class WSSEAuthenticator extends AbstractAuthenticator
+class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationEntryPointInterface
 {
     protected UserProviderInterface $userProvider;
     protected PasswordHasherInterface $passwordHasher;
+    protected CacheItemPoolInterface $nonceCache;
+    protected AuthenticationFailureHandlerInterface $failureHandler;
     protected array $options;
-    protected int $token_lifetime;
-    protected string $date_format;
 
     protected ?array $wsse_header = null;
 
     public function __construct(
         UserProviderInterface $userProvider,
         PasswordHasherInterface $passwordHasher,
-        array $options,
-        int $token_lifetime = 300,
-        string $date_format = '/^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/'
+        CacheItemPoolInterface $nonceCache,
+        AuthenticationFailureHandlerInterface $failureHandler,
+        array $options
     ) {
         $this->userProvider = $userProvider;
         $this->passwordHasher = $passwordHasher;
+        $this->nonceCache = $nonceCache;
+        $this->failureHandler = $failureHandler;
         $this->options = $options;
-        $this->token_lifetime = $token_lifetime;
-        $this->date_format = $date_format;
     }
 
     public function supports(Request $request): ?bool
@@ -92,7 +96,6 @@ class WSSEAuthenticator extends AbstractAuthenticator
 
     public function onAuthenticationFailure(Request $request, AuthenticationException $exception): ?Response
     {
-        return new Response('', 403);
         return $this->failureHandler->onAuthenticationFailure($request, $exception);
     }
 
@@ -166,33 +169,37 @@ class WSSEAuthenticator extends AbstractAuthenticator
 
     public function getDateFormat(): string
     {
-        return $this->date_format;
+        return $this->options['date_format'];
     }
 
     protected function validateDigest(string $digest, string $nonce, string $created, string $secret, string $salt): bool
     {
         //check whether timestamp is formatted correctly
         if (!$this->isFormattedCorrectly($created)) {
-            throw new BadCredentialsException('Incorrectly formatted "created" in token.');
+            throw new CustomUserMessageAuthenticationException('Incorrectly formatted "created" in token.');
         }
 
         //check whether timestamp is not in the future
         if ($this->isTokenFromFuture($created)) {
-            throw new BadCredentialsException('Future token detected.');
+            throw new CustomUserMessageAuthenticationException('Future token detected.');
         }
 
         //expire timestamp after specified lifetime
-        if (strtotime($this->getCurrentTime()) - strtotime($created) > $this->token_lifetime) {
-            throw new CredentialsExpiredException('Token has expired.');
+        if (strtotime($this->getCurrentTime()) - strtotime($created) > $this->options['lifetime']) {
+            throw new CustomUserMessageAuthenticationException('Token has expired.');
         }
 
-//        //validate that nonce is unique within specified lifetime
-//        //if it is not, this could be a replay attack
-//        if ($this->nonceCache->contains($nonce)) {
-//            throw new NonceExpiredException('Previously used nonce detected.');
-//        }
-//
-//        $this->nonceCache->save($nonce, strtotime($this->getCurrentTime()), $this->token_lifetime);
+        $nonceCacheItem = $this->nonceCache->getItem(md5($nonce));
+        if ($nonceCacheItem->isHit()) {
+            throw new CustomUserMessageAuthenticationException('Previously used nonce detected.');
+        }
+
+        $nonceCacheItem
+            ->set(strtotime($this->getCurrentTime()))
+            ->expiresAfter($this->options['lifetime'])
+        ;
+
+        $this->nonceCache->save($nonceCacheItem);
 
         //validate secret
         $expected = $this->passwordHasher->hash(
@@ -206,5 +213,19 @@ class WSSEAuthenticator extends AbstractAuthenticator
         );
 
         return hash_equals($expected, $digest);
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function start(Request $request, AuthenticationException $authException = null)
+    {
+        return new Response('', Response::HTTP_UNAUTHORIZED, [
+            'WWW-Authenticate' => sprintf(
+                'WSSE realm="%s", profile="%s"',
+                $this->options['realm'],
+                $this->options['profile']
+            )
+        ]);
     }
 }
