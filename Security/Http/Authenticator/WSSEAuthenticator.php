@@ -71,7 +71,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         try {
             $user = $this->userProvider->loadUserByIdentifier($this->wsse_header['Username']);
         } catch (UserNotFoundException $e) {
-            throw new AuthenticationException('WSSE authentication failed.');
+            throw new BadCredentialsException('WSSE authentication failed.');
         }
 
         if ($this->validateDigest(
@@ -86,7 +86,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             );
         }
 
-        throw new AuthenticationException('WSSE authentication failed.');
+        throw new BadCredentialsException('WSSE authentication failed.');
     }
 
     public function onAuthenticationSuccess(Request $request, TokenInterface $token, string $firewallName): ?Response
