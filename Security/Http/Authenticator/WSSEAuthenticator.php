@@ -142,7 +142,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
     protected function isTokenFromFuture($created): bool
     {
-        return strtotime($created) > strtotime($this->getCurrentTime());
+        return abs(strtotime($created) - strtotime($this->getCurrentTime())) > 61;
     }
 
     protected function getCurrentTime(): string

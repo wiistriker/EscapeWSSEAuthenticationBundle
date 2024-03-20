@@ -38,7 +38,7 @@ class EscapeWSSEAuthenticationExtension extends Extension
     //https://github.com/symfony/symfony/issues/1768#issuecomment-1653074
     //"However, if the default placement of underscores doesn't work for you,
     //you can simply overwrite Extension::getAlias() and Bundle::getContainerExtension()."
-    public function getAlias()
+    public function getAlias(): string
     {
         return 'escape_wsse_authentication';
     }

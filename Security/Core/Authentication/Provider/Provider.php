@@ -187,7 +187,7 @@ class Provider implements AuthenticationProviderInterface
         return $this->dateFormat;
     }
 
-    public function supports(TokenInterface $token)
+    public function supports(TokenInterface $token): bool
     {
         return $token instanceof Token && $token->hasAttribute('nonce') && $token->hasAttribute('created') && $this->providerKey === $token->getProviderKey();
     }
