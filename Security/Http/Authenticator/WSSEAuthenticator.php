@@ -181,7 +181,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
         //check whether timestamp is not in the future
         if ($this->isTokenFromFuture($created)) {
-            throw new CustomUserMessageAuthenticationException('Future token detected. ' . $created . ' ' . $this->getCurrentTime());
+            throw new CustomUserMessageAuthenticationException('Future token detected.');
         }
 
         //expire timestamp after specified lifetime
