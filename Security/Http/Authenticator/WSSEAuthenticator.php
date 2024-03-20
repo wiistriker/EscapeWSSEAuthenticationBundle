@@ -10,7 +10,6 @@ use Symfony\Component\PasswordHasher\PasswordHasherInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
-use Symfony\Component\Security\Core\Exception\CredentialsExpiredException;
 use Symfony\Component\Security\Core\Exception\CustomUserMessageAuthenticationException;
 use Symfony\Component\Security\Core\Exception\UserNotFoundException;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -182,7 +181,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
         //check whether timestamp is not in the future
         if ($this->isTokenFromFuture($created)) {
-            throw new CustomUserMessageAuthenticationException('Future token detected.');
+            throw new CustomUserMessageAuthenticationException('Future token detected. ' . $created . ' ' . $this->getCurrentTime());
         }
 
         //expire timestamp after specified lifetime
