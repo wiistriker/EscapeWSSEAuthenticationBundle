@@ -15,11 +15,6 @@ class EscapeWSSEAuthenticationBundle extends Bundle
 
         /** @var SecurityExtension $extension */
         $extension = $container->getExtension('security');
-
-        if (method_exists($extension, 'addAuthenticatorFactory')) {
-            $extension->addAuthenticatorFactory(new WSSEFactory());
-        } else {
-            $extension->addSecurityListenerFactory(new Factory());
-        }
+        $extension->addAuthenticatorFactory(new WSSEFactory());
     }
 }

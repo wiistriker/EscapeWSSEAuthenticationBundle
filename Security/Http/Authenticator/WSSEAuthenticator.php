@@ -16,9 +16,8 @@ use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Authentication\AuthenticationFailureHandlerInterface;
 use Symfony\Component\Security\Http\Authenticator\AbstractAuthenticator;
-use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
 use Symfony\Component\Security\Http\Authenticator\Passport\Badge\UserBadge;
-use Symfony\Component\Security\Http\Authenticator\Passport\PassportInterface;
+use Symfony\Component\Security\Http\Authenticator\Passport\Passport;
 use Symfony\Component\Security\Http\Authenticator\Passport\SelfValidatingPassport;
 use Symfony\Component\Security\Http\EntryPoint\AuthenticationEntryPointInterface;
 use UnexpectedValueException;
@@ -28,7 +27,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
     protected UserProviderInterface $userProvider;
     protected PasswordHasherInterface $passwordHasher;
     protected CacheItemPoolInterface $nonceCache;
-    protected AuthenticationFailureHandlerInterface $failureHandler;
+    protected ?AuthenticationFailureHandlerInterface $failureHandler;
     protected array $options;
 
     protected ?array $wsse_header = null;
@@ -37,7 +36,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         UserProviderInterface $userProvider,
         PasswordHasherInterface $passwordHasher,
         CacheItemPoolInterface $nonceCache,
-        AuthenticationFailureHandlerInterface $failureHandler,
+        ?AuthenticationFailureHandlerInterface $failureHandler,
         array $options
     ) {
         $this->userProvider = $userProvider;
@@ -64,12 +63,16 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
     }
 
     /**
-     * @inheritDoc
+     * @return Passport
      */
     public function authenticate(Request $request)
     {
         try {
-            $user = $this->userProvider->loadUserByIdentifier($this->wsse_header['Username']);
+            if (method_exists($this->userProvider, 'loadUserByIdentifier')) {
+                $user = $this->userProvider->loadUserByIdentifier($this->wsse_header['Username']);
+            } else {
+                $user = $this->userProvider->loadUserByUsername($this->wsse_header['Username']);
+            }
         } catch (UserNotFoundException $e) {
             throw new BadCredentialsException('WSSE authentication failed.');
         }
@@ -81,9 +84,15 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             $this->getSecret($user),
             $this->getSalt($user)
         )) {
-            return new SelfValidatingPassport(
-                new UserBadge($user->getUserIdentifier(), static function () use ($user) { return $user; })
-            );
+            if (method_exists($user, 'getUserIdentifier')) {
+                return new SelfValidatingPassport(
+                    new UserBadge($user->getUserIdentifier(), static function () use ($user) { return $user; })
+                );
+            } else {
+                return new SelfValidatingPassport(
+                    new UserBadge($user->getUsername(), static function () use ($user) { return $user; })
+                );
+            }
         }
 
         throw new BadCredentialsException('WSSE authentication failed.');
@@ -96,6 +105,10 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
     public function onAuthenticationFailure(Request $request, AuthenticationException $exception): ?Response
     {
+        if (!$this->failureHandler) {
+            return null;
+        }
+
         return $this->failureHandler->onAuthenticationFailure($request, $exception);
     }
 
@@ -216,7 +229,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
     }
 
     /**
-     * @inheritDoc
+     * @return Response
      */
     public function start(Request $request, AuthenticationException $authException = null)
     {
