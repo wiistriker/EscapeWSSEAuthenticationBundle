@@ -21,7 +21,7 @@ class EscapeWSSEAuthenticationExtension extends Extension
         $container->setParameter('escape_wsse_authentication.encoder.class', $config['authentication_encoder_class']);
 
         $container->getDefinition('escape_wsse_authentication.authenticator')
-            ->replaceArgument(2, $config['nonce_cache_service'])
+            ->replaceArgument('$nonceCache', new Reference($config['nonce_cache_service']))
         ;
     }
 

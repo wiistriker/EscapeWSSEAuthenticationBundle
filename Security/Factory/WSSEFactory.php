@@ -96,7 +96,7 @@ class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterfa
             ->replaceArgument('$userProvider', new Reference($userProviderId))
             ->replaceArgument('$passwordHasher', new Reference($passwordHasherId))
             ->replaceArgument('$failureHandler', new Reference($this->createAuthenticationFailureHandler($container, $firewallName, $config)))
-            ->replaceArgument(4, $authenticator_config)
+            ->replaceArgument('$options', $authenticator_config)
         ;
 
         if ($authenticator_config['nonce_cache_service']) {
