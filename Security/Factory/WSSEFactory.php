@@ -15,6 +15,8 @@ class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterfa
 
     public function __construct()
     {
+        $this->options = [];
+
         $this->addOption('realm');
         $this->addOption('profile', '_password');
         $this->addOption('lifetime', 300);
