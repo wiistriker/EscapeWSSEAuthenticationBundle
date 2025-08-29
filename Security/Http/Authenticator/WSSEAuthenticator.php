@@ -43,7 +43,9 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         $this->passwordHasher = $passwordHasher;
         $this->nonceCache = $nonceCache;
         $this->failureHandler = $failureHandler;
-        $this->options = $options;
+        $this->options = array_merge([
+            'future_allowed_seconds' => 61
+        ], $options);
     }
 
     public function supports(Request $request): ?bool
@@ -62,10 +64,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         return true;
     }
 
-    /**
-     * @return Passport
-     */
-    public function authenticate(Request $request)
+    public function authenticate(Request $request): Passport
     {
         try {
             if (method_exists($this->userProvider, 'loadUserByIdentifier')) {
@@ -154,7 +153,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
     protected function isTokenFromFuture($created): bool
     {
-        return abs(strtotime($created) - strtotime($this->getCurrentTime())) > 61;
+        return abs(strtotime($created) - strtotime($this->getCurrentTime())) > $this->options['future_allowed_seconds'];
     }
 
     protected function getCurrentTime(): string
@@ -202,7 +201,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             throw new CustomUserMessageAuthenticationException('Token has expired.');
         }
 
-        $nonceCacheItem = $this->nonceCache->getItem(md5($nonce));
+        $nonceCacheItem = $this->nonceCache->getItem('wsse_nonce_' . md5($nonce));
         if ($nonceCacheItem->isHit()) {
             throw new CustomUserMessageAuthenticationException('Previously used nonce detected.');
         }
@@ -228,10 +227,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         return hash_equals($expected, $digest);
     }
 
-    /**
-     * @return Response
-     */
-    public function start(Request $request, AuthenticationException $authException = null)
+    public function start(Request $request, AuthenticationException $authException = null): Response
     {
         return new Response('', Response::HTTP_UNAUTHORIZED, [
             'WWW-Authenticate' => sprintf(

@@ -77,7 +77,7 @@ class WSSEAuthenticatorTest extends TestCase
         $this->userProvider->expects($this->once())->method('loadUserByUsername')->will($this->returnValue($this->user));
 
         $passwordHasher = new MessageDigestPasswordHasher('sha1', true, 1);
-        $time = date(DATE_ISO8601);
+        $time = date(DATE_ATOM);
 
         $digest = $passwordHasher->hash(
             sprintf(
@@ -108,7 +108,7 @@ class WSSEAuthenticatorTest extends TestCase
         $this->userProvider->expects($this->exactly(2))->method('loadUserByUsername')->will($this->returnValue($this->user));
 
         $passwordHasher = new MessageDigestPasswordHasher('sha1', true, 1);
-        $time = date(DATE_ISO8601);
+        $time = date(DATE_ATOM);
 
         $digest = $passwordHasher->hash(
             sprintf(
@@ -130,7 +130,7 @@ class WSSEAuthenticatorTest extends TestCase
         $this->assertInstanceOf(SelfValidatingPassport::class, $passport);
         $this->assertEquals($passport->getUser(), $this->user);
 
-        $time = date(DATE_ISO8601);
+        $time = date(DATE_ATOM);
 
         $digest = $passwordHasher->hash(
             sprintf(

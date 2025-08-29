@@ -2,3 +2,13 @@ services:
     escape_wsse_authentication.encoder:
         class:  '%escape_wsse_authentication.encoder.class%'
         arguments: [ 'sha1', true, 1 ]
+
+    escape_wsse_authentication.authenticator:
+        class: Escape\WSSEAuthenticationBundle\Security\Http\Authenticator\WSSEAuthenticator
+        abstract: true
+        arguments:
+            $userProvider: !abstract defined in WSSEFactory
+            $passwordHasher: !abstract defined in WSSEFactory
+            $nonceCache: !abstract defined in WSSEFactory
+            $failureHandler: !abstract defined in WSSEFactory
+            $options: []

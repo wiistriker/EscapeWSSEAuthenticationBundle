@@ -1,7 +1,7 @@
 {
     "name": "escapestudios/wsse-authentication-bundle",
     "type": "symfony-bundle",
-    "description": "Symfony2 bundle to implement WSSE authentication",
+    "description": "Symfony bundle to implement WSSE authentication",
     "keywords": ["wsse", "authentication", "bundle"],
     "homepage": "https://github.com/djoos/EscapeWSSEAuthenticationBundle",
     "license": "MIT",

@@ -10,7 +10,7 @@ use Symfony\Component\Config\FileLocator;
 
 class EscapeWSSEAuthenticationExtension extends Extension
 {
-    public function load(array $configs, ContainerBuilder $container)
+    public function load(array $configs, ContainerBuilder $container): void
     {
         $configuration = new Configuration();
         $config = $this->processConfiguration($configuration, $configs);
@@ -19,6 +19,10 @@ class EscapeWSSEAuthenticationExtension extends Extension
         $loader->load('services.yml');
 
         $container->setParameter('escape_wsse_authentication.encoder.class', $config['authentication_encoder_class']);
+
+        $container->getDefinition('escape_wsse_authentication.authenticator')
+            ->replaceArgument(2, $config['nonce_cache_service'])
+        ;
     }
 
     public function getAlias(): string

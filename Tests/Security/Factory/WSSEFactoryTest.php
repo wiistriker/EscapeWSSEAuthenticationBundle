@@ -61,7 +61,7 @@ class WSSEFactoryTest extends TestCase
                 'encoder' => $encoder,
                 'lifetime' => $lifetime,
                 'date_format' => $date_format,
-                'nonce_cache_service_id' => 'cache.app'
+                'nonce_cache_service' => 'cache.app'
             ],
             'test'
         );
@@ -73,7 +73,8 @@ class WSSEFactoryTest extends TestCase
                 'date_format' => $date_format,
                 'lifetime' => 300,
                 'realm' => 'somerealm',
-                'profile' => 'someprofile'
+                'profile' => 'someprofile',
+                'nonce_cache_service' => 'cache.app'
             ],
             $definition->getArgument(4)
         );

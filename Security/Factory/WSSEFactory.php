@@ -2,7 +2,6 @@
 
 namespace Escape\WSSEAuthenticationBundle\Security\Factory;
 
-use Escape\WSSEAuthenticationBundle\Security\Http\Authenticator\WSSEAuthenticator;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\AbstractFactory;
 use Symfony\Bundle\SecurityBundle\DependencyInjection\Security\Factory\AuthenticatorFactoryInterface;
 use Symfony\Component\Config\Definition\Builder\NodeDefinition;
@@ -12,17 +11,43 @@ use Symfony\Component\DependencyInjection\ChildDefinition;
 
 class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterface
 {
-    public function addConfiguration(NodeDefinition $node)
+    public const PRIORITY = 0;
+
+    public function __construct()
     {
-        $node
+        $this->addOption('realm');
+        $this->addOption('profile', '_password');
+        $this->addOption('lifetime', 300);
+        $this->addOption('date_format', '/^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/');
+        $this->addOption('future_allowed_seconds', 61);
+        $this->addOption('nonce_cache_service');
+        $this->addOption('failure_handler');
+
+        $this->defaultFailureHandlerOptions = [];
+        $this->defaultSuccessHandlerOptions = [];
+    }
+
+    public function getKey(): string
+    {
+        return 'wsse';
+    }
+
+    public function getPriority(): int
+    {
+        return self::PRIORITY;
+    }
+
+    public function getPosition(): string
+    {
+        return 'pre_auth';
+    }
+
+    public function addConfiguration(NodeDefinition $builder): void
+    {
+        parent::addConfiguration($builder);
+
+        $builder
             ->children()
-                ->scalarNode('provider')->end()
-                ->scalarNode('realm')->defaultValue(null)->end()
-                ->scalarNode('profile')->defaultValue('UsernameToken')->end()
-                ->scalarNode('lifetime')->defaultValue(300)->end()
-                ->scalarNode('date_format')->defaultValue(
-                    '/^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/'
-                )->end()
                 ->arrayNode('encoder')
                     ->children()
                         ->scalarNode('algorithm')->end()
@@ -30,14 +55,14 @@ class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterfa
                         ->scalarNode('iterations')->end()
                     ->end()
                 ->end()
-                ->scalarNode('nonce_cache_service_id')->defaultValue('cache.app')->end()
                 ->scalarNode('failure_handler')->end()
-            ->end();
+            ->end()
+        ;
     }
 
-    public function getKey(): string
+    protected function isRememberMeAware(array $config): bool
     {
-        return 'wsse';
+        return false;
     }
 
     public function createAuthenticator(ContainerBuilder $container, string $firewallName, array $config, string $userProviderId): string
@@ -55,39 +80,28 @@ class WSSEFactory extends AbstractFactory implements AuthenticatorFactoryInterfa
             $passwordHasherDefinition->replaceArgument(1, $config['encoder']['encodeHashAsBase64']);
         }
 
-        if(isset($config['encoder']['iterations'])) {
+        if (isset($config['encoder']['iterations'])) {
             $passwordHasherDefinition->replaceArgument(2, $config['encoder']['iterations']);
         }
 
         $container->setDefinition($passwordHasherId, $passwordHasherDefinition);
 
-        $authenticator_config = [
-            'date_format' => $config['date_format'],
-            'lifetime' => $config['lifetime'],
-            'realm' => $config['realm'],
-            'profile' => $config['profile']
-        ];
+        $authenticator_config = array_intersect_key($config, $this->options);
 
-        $container
-            ->register($authenticatorId, WSSEAuthenticator::class)
-            ->addArgument(new Reference($userProviderId))
-            ->addArgument(new Reference($passwordHasherId))
-            ->addArgument(new Reference($config['nonce_cache_service_id']))
-            ->addArgument(new Reference($this->createAuthenticationFailureHandler($container, $firewallName, $config)))
-            ->addArgument($authenticator_config)
+        $authenticatorDefinition = $container->setDefinition($authenticatorId, new ChildDefinition('escape_wsse_authentication.authenticator'));
+
+        $authenticatorDefinition
+            ->replaceArgument('$userProvider', new Reference($userProviderId))
+            ->replaceArgument('$passwordHasher', new Reference($passwordHasherId))
+            ->replaceArgument('$failureHandler', new Reference($this->createAuthenticationFailureHandler($container, $firewallName, $config)))
+            ->replaceArgument(4, $authenticator_config)
         ;
 
+        if ($authenticator_config['nonce_cache_service']) {
+            $authenticatorDefinition->replaceArgument('$nonceCache', new Reference($authenticator_config['nonce_cache_service']));
+        }
+
         return $authenticatorId;
-    }
-
-    public function getPriority(): int
-    {
-        return 0;
-    }
-
-    public function getPosition(): string
-    {
-        return 'pre_auth';
     }
 
     protected function createAuthProvider(ContainerBuilder $container, string $id, array $config, string $userProviderId): string
