@@ -9,7 +9,6 @@ use Symfony\Component\Security\Core\Encoder\PasswordEncoderInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
 use Symfony\Component\Security\Core\Exception\CredentialsExpiredException;
-use Symfony\Component\Security\Core\Exception\NonceExpiredException;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Authentication\Token\UsernamePasswordToken as Token;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -128,7 +127,7 @@ class Provider implements AuthenticationProviderInterface
         //if it is not, this could be a replay attack
         if($this->nonceCache->contains($nonce))
         {
-            throw new NonceExpiredException('Previously used nonce detected.');
+            throw new CredentialsExpiredException('Previously used nonce detected.');
         }
 
         $this->nonceCache->save($nonce, strtotime($this->getCurrentTime()), $this->lifetime);
