@@ -59,6 +59,10 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             return false;
         }
 
+        if ($request->headers->get('X-WSSE-Username-Encoded')) {
+            $wsse_header['Username'] = urldecode($wsse_header['Username']);
+        }
+
         $this->wsse_header = $wsse_header;
 
         return true;
