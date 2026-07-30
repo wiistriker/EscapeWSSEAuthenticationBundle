@@ -5,7 +5,14 @@ namespace Escape\WSSEAuthenticationBundle\Tests\Fixtures;
 use Symfony\Component\Security\Core\User\UserInterface;
 
 /**
- * A user exposing only the pre-5.3 API: it has getUsername(), but no getUserIdentifier().
+ * A user exposing only the pre-5.3 API: it has getUsername(), but no
+ * getUserIdentifier().
+ *
+ * WARNING: loadable on Symfony 5.4 only. From 6.0 on UserInterface declares
+ * getUserIdentifier() for real, so declaring this class is a fatal error - it
+ * must never be referenced without guarding on
+ * method_exists(UserInterface::class, 'getUserIdentifier') first, and nothing
+ * else in the fixtures may extend it.
  */
 class LegacyUser implements UserInterface
 {

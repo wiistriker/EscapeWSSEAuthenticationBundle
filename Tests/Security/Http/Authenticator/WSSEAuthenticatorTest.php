@@ -63,8 +63,18 @@ class WSSEAuthenticatorTest extends TestCase
         ];
     }
 
-    public function testAuthenticateWithLegacyProviderAndUser()
+    /**
+     * Covers the fallbacks to loadUserByUsername()/getUsername(). They are dead
+     * code from Symfony 6 on, where both interfaces declare the identifier-based
+     * methods for real - a user class without getUserIdentifier() cannot even be
+     * declared there, hence the skip rather than a version-independent test.
+     */
+    public function testAuthenticateWithPreSymfony6UserApi()
     {
+        if (method_exists(UserInterface::class, 'getUserIdentifier')) {
+            $this->markTestSkipped('UserInterface::getUserIdentifier() is mandatory from Symfony 6 on.');
+        }
+
         $user = new LegacyUser('someuser', 'somesecret', 'somesalt');
         $authenticator = $this->createAuthenticator($this->createLegacyProvider($user));
 
@@ -320,16 +330,20 @@ class WSSEAuthenticatorTest extends TestCase
     }
 
     /**
-     * A mock of UserProviderInterface has no loadUserByIdentifier() - that method
-     * only exists as a @method annotation on the 5.4 interface - so the
-     * authenticator falls back to loadUserByUsername().
+     * On Symfony 5.4/6.x a mock of UserProviderInterface has no
+     * loadUserByIdentifier() - the method only exists as a @method annotation on
+     * the interface - so the authenticator falls back to loadUserByUsername().
+     * From Symfony 7 on it is a real interface method and the fallback is gone,
+     * hence the lookup below.
      */
     private function createLegacyProvider(?UserInterface $user = null): UserProviderInterface
     {
         $provider = $this->createMock(UserProviderInterface::class);
 
         if (null !== $user) {
-            $provider->expects($this->once())->method('loadUserByUsername')->willReturn($user);
+            $provider->expects($this->once())
+                ->method(method_exists($provider, 'loadUserByIdentifier') ? 'loadUserByIdentifier' : 'loadUserByUsername')
+                ->willReturn($user);
         }
 
         return $provider;

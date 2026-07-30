@@ -10,13 +10,6 @@ use Symfony\Component\DependencyInjection\Reference;
 
 class WSSEFactoryTest extends TestCase
 {
-    private const DATE_FORMAT = '/^([\+-]?\d{4}(?!\d{2}\b))((-?)((0[1-9]|1[0-2])(\3([12]\d|0[1-9]|3[01]))?|W([0-4]\d|5[0-2])(-?[1-7])?|(00[1-9]|0[1-9]\d|[12]\d{2}|3([0-5]\d|6[1-6])))([T\s]((([01]\d|2[0-3])((:?)[0-5]\d)?|24\:?00)([\.,]\d+(?!:))?)?(\17[0-5]\d([\.,]\d+)?)?([zZ]|([\+-])([01]\d|2[0-3]):?([0-5]\d)?)?)?)?$/';
-
-    public function testGetPosition()
-    {
-        $this->assertSame('pre_auth', (new WSSEFactory())->getPosition());
-    }
-
     public function testGetKey()
     {
         $this->assertSame('wsse', (new WSSEFactory())->getKey());
@@ -27,16 +20,6 @@ class WSSEFactoryTest extends TestCase
         $this->assertSame(0, (new WSSEFactory())->getPriority());
     }
 
-    public function testIsRememberMeAware()
-    {
-        $factory = new WSSEFactory();
-
-        $method = new \ReflectionMethod($factory, 'isRememberMeAware');
-        $method->setAccessible(true);
-
-        $this->assertFalse($method->invoke($factory, []));
-    }
-
     public function testAddConfigurationDefaults()
     {
         $config = $this->processConfiguration(['realm' => 'somerealm']);
@@ -45,47 +28,39 @@ class WSSEFactoryTest extends TestCase
         $this->assertSame('_password', $config['profile']);
         $this->assertSame(300, $config['lifetime']);
         $this->assertSame(61, $config['future_allowed_seconds']);
-        $this->assertSame(self::DATE_FORMAT, $config['date_format']);
+        $this->assertSame(WSSEFactory::DEFAULT_DATE_FORMAT, $config['date_format']);
         $this->assertNull($config['nonce_cache_service']);
-        $this->assertTrue($config['remember_me']);
+        $this->assertNull($config['failure_handler']);
         $this->assertArrayNotHasKey('encoder', $config);
-
-        // addConfiguration() re-declares "failure_handler", which AbstractFactory
-        // had already registered with a null default; the later declaration wins
-        // and drops that default, so the key disappears when unset.
-        $this->assertArrayNotHasKey('failure_handler', $config);
+        $this->assertArrayNotHasKey('provider', $config);
     }
 
-    public function testAddConfigurationAcceptsEncoderAndFailureHandler()
+    public function testAddConfigurationAcceptsEncoderProviderAndFailureHandler()
     {
         $config = $this->processConfiguration([
             'realm' => 'somerealm',
+            'provider' => 'wsse_users',
             'encoder' => [
                 'algorithm' => 'sha256',
                 'encodeHashAsBase64' => false,
                 'iterations' => 2,
             ],
             'failure_handler' => 'app.wsse.failure_handler',
-            'nonce_cache_service' => 'cache.app',
+            'nonce_cache_service' => 'app.wsse_nonce_cache',
         ]);
 
+        $this->assertSame('wsse_users', $config['provider']);
         $this->assertSame(
             ['algorithm' => 'sha256', 'encodeHashAsBase64' => false, 'iterations' => 2],
             $config['encoder']
         );
         $this->assertSame('app.wsse.failure_handler', $config['failure_handler']);
-        $this->assertSame('cache.app', $config['nonce_cache_service']);
+        $this->assertSame('app.wsse_nonce_cache', $config['nonce_cache_service']);
     }
 
     public function testCreateAuthenticator()
     {
         $container = new ContainerBuilder();
-
-        $encoder = [
-            'algorithm' => 'sha1',
-            'encodeHashAsBase64' => true,
-            'iterations' => 1,
-        ];
 
         $authenticatorId = (new WSSEFactory())->createAuthenticator(
             $container,
@@ -93,10 +68,16 @@ class WSSEFactoryTest extends TestCase
             [
                 'realm' => 'somerealm',
                 'profile' => 'someprofile',
-                'encoder' => $encoder,
                 'lifetime' => 300,
-                'date_format' => self::DATE_FORMAT,
-                'nonce_cache_service' => 'cache.app',
+                'date_format' => WSSEFactory::DEFAULT_DATE_FORMAT,
+                'future_allowed_seconds' => 61,
+                'nonce_cache_service' => 'app.wsse_nonce_cache',
+                'failure_handler' => null,
+                'encoder' => [
+                    'algorithm' => 'sha1',
+                    'encodeHashAsBase64' => true,
+                    'iterations' => 1,
+                ],
             ],
             'some.user_provider'
         );
@@ -108,14 +89,16 @@ class WSSEFactoryTest extends TestCase
 
         $this->assertEquals(new Reference('some.user_provider'), $definition->getArgument('$userProvider'));
         $this->assertEquals(new Reference('escape_wsse_authentication.encoder.foo-firewall'), $definition->getArgument('$passwordHasher'));
-        $this->assertEquals(new Reference('cache.app'), $definition->getArgument('$nonceCache'));
+        $this->assertEquals(new Reference('app.wsse_nonce_cache'), $definition->getArgument('$nonceCache'));
+
+        // container-level configuration must not leak into the authenticator options
         $this->assertSame(
             [
                 'realm' => 'somerealm',
                 'profile' => 'someprofile',
                 'lifetime' => 300,
-                'date_format' => self::DATE_FORMAT,
-                'nonce_cache_service' => 'cache.app',
+                'date_format' => WSSEFactory::DEFAULT_DATE_FORMAT,
+                'future_allowed_seconds' => 61,
             ],
             $definition->getArgument('$options')
         );
@@ -143,15 +126,7 @@ class WSSEFactoryTest extends TestCase
         $authenticatorId = (new WSSEFactory())->createAuthenticator(
             $container,
             'bar-firewall',
-            [
-                'realm' => 'somerealm',
-                'profile' => 'someprofile',
-                'lifetime' => 300,
-                'date_format' => self::DATE_FORMAT,
-                'future_allowed_seconds' => 61,
-                'nonce_cache_service' => null,
-                'failure_handler' => null,
-            ],
+            $this->minimalFirewallConfig(),
             'some.user_provider'
         );
 
@@ -162,9 +137,9 @@ class WSSEFactoryTest extends TestCase
     }
 
     /**
-     * A firewall that configures no failure handler must not get the default one:
-     * it redirects and touches the session, which cannot work on the stateless
-     * firewalls WSSE targets, and it would swallow the 401 challenge.
+     * A firewall that configures no failure handler must not get one: Symfony's
+     * default handler redirects and touches the session, which cannot work on the
+     * stateless firewalls WSSE targets, and it would swallow the 401 challenge.
      */
     public function testCreateAuthenticatorWiresNoFailureHandlerByDefault()
     {
@@ -173,18 +148,11 @@ class WSSEFactoryTest extends TestCase
         $authenticatorId = (new WSSEFactory())->createAuthenticator(
             $container,
             'baz-firewall',
-            [
-                'realm' => 'somerealm',
-                'profile' => 'someprofile',
-                'lifetime' => 300,
-                'date_format' => self::DATE_FORMAT,
-                'nonce_cache_service' => null,
-            ],
+            $this->minimalFirewallConfig(),
             'some.user_provider'
         );
 
         $this->assertNull($container->getDefinition($authenticatorId)->getArgument('$failureHandler'));
-        $this->assertFalse($container->hasDefinition('security.authentication.failure_handler.baz-firewall.wsse'));
     }
 
     public function testCreateAuthenticatorWiresAConfiguredFailureHandler()
@@ -194,54 +162,27 @@ class WSSEFactoryTest extends TestCase
         $authenticatorId = (new WSSEFactory())->createAuthenticator(
             $container,
             'qux-firewall',
-            [
-                'realm' => 'somerealm',
-                'profile' => 'someprofile',
-                'lifetime' => 300,
-                'date_format' => self::DATE_FORMAT,
-                'nonce_cache_service' => null,
-                'failure_handler' => 'app.wsse.failure_handler',
-            ],
+            $this->minimalFirewallConfig(['failure_handler' => 'app.wsse.failure_handler']),
             'some.user_provider'
         );
 
-        $failureHandlerId = 'security.authentication.failure_handler.qux-firewall.wsse';
-
-        $this->assertTrue($container->hasDefinition($failureHandlerId));
         $this->assertEquals(
-            new Reference($failureHandlerId),
+            new Reference('app.wsse.failure_handler'),
             $container->getDefinition($authenticatorId)->getArgument('$failureHandler')
         );
     }
 
-    /**
-     * @dataProvider provideUnsupportedLegacyMethods
-     */
-    public function testLegacyAuthenticationSystemIsNotSupported(string $method, int $arguments)
+    private function minimalFirewallConfig(array $overrides = []): array
     {
-        $factory = new WSSEFactory();
-
-        $reflection = new \ReflectionMethod($factory, $method);
-        $reflection->setAccessible(true);
-
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('The old authentication system is not supported with wsse.');
-
-        $reflection->invokeArgs($factory, array_slice(
-            [new ContainerBuilder(), 'foo-firewall', [], 'some.user_provider'],
-            0,
-            $arguments
-        ));
-    }
-
-    public function provideUnsupportedLegacyMethods(): array
-    {
-        return [
-            'createAuthProvider' => ['createAuthProvider', 4],
-            'getListenerId' => ['getListenerId', 0],
-            'createListener' => ['createListener', 4],
-            'createEntryPoint' => ['createEntryPoint', 4],
-        ];
+        return array_merge([
+            'realm' => 'somerealm',
+            'profile' => 'someprofile',
+            'lifetime' => 300,
+            'date_format' => WSSEFactory::DEFAULT_DATE_FORMAT,
+            'future_allowed_seconds' => 61,
+            'nonce_cache_service' => null,
+            'failure_handler' => null,
+        ], $overrides);
     }
 
     private function processConfiguration(array $config): array

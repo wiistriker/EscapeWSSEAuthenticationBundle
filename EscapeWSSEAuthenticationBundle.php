@@ -3,13 +3,13 @@
 namespace Escape\WSSEAuthenticationBundle;
 
 use Escape\WSSEAuthenticationBundle\Security\Factory\WSSEFactory;
-use Symfony\Component\HttpKernel\Bundle\Bundle;
+use Symfony\Bundle\SecurityBundle\DependencyInjection\SecurityExtension;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Escape\WSSEAuthenticationBundle\DependencyInjection\Security\Factory\Factory;
+use Symfony\Component\HttpKernel\Bundle\Bundle;
 
 class EscapeWSSEAuthenticationBundle extends Bundle
 {
-    public function build(ContainerBuilder $container)
+    public function build(ContainerBuilder $container): void
     {
         parent::build($container);
 

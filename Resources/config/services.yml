@@ -1,6 +1,7 @@
 services:
     escape_wsse_authentication.encoder:
         class:  '%escape_wsse_authentication.encoder.class%'
+        abstract: true
         arguments: [ 'sha1', true, 1 ]
 
     escape_wsse_authentication.authenticator:

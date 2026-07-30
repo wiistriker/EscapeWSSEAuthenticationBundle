@@ -6,12 +6,14 @@ use Escape\WSSEAuthenticationBundle\Security\Core\User\WSSEUserInterface;
 use Psr\Cache\CacheItemPoolInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\PasswordHasher\PasswordHasherInterface;
+use Symfony\Component\PasswordHasher\LegacyPasswordHasherInterface;
 use Symfony\Component\Security\Core\Authentication\Token\TokenInterface;
 use Symfony\Component\Security\Core\Exception\AuthenticationException;
 use Symfony\Component\Security\Core\Exception\BadCredentialsException;
 use Symfony\Component\Security\Core\Exception\CustomUserMessageAuthenticationException;
 use Symfony\Component\Security\Core\Exception\UserNotFoundException;
+use Symfony\Component\Security\Core\User\LegacyPasswordAuthenticatedUserInterface;
+use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Security\Core\User\UserProviderInterface;
 use Symfony\Component\Security\Http\Authentication\AuthenticationFailureHandlerInterface;
@@ -25,14 +27,14 @@ use UnexpectedValueException;
 class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationEntryPointInterface
 {
     protected UserProviderInterface $userProvider;
-    protected PasswordHasherInterface $passwordHasher;
+    protected LegacyPasswordHasherInterface $passwordHasher;
     protected CacheItemPoolInterface $nonceCache;
     protected ?AuthenticationFailureHandlerInterface $failureHandler;
     protected array $options;
 
     public function __construct(
         UserProviderInterface $userProvider,
-        PasswordHasherInterface $passwordHasher,
+        LegacyPasswordHasherInterface $passwordHasher,
         CacheItemPoolInterface $nonceCache,
         ?AuthenticationFailureHandlerInterface $failureHandler,
         array $options
@@ -168,7 +170,7 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
     protected function isFormattedCorrectly($created): bool
     {
-        return preg_match($this->getDateFormat(), $created);
+        return 1 === preg_match($this->getDateFormat(), $created);
     }
 
     /**
@@ -186,22 +188,51 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         return gmdate(DATE_ATOM);
     }
 
+    /**
+     * UserInterface declares getPassword() only up to Symfony 6; from 7 on the
+     * password lives on PasswordAuthenticatedUserInterface, so it cannot be
+     * called unconditionally.
+     */
     protected function getSecret(UserInterface $user): string
     {
         if ($user instanceof WSSEUserInterface) {
             return $user->getWSSESecret();
         }
 
-        return $user->getPassword() ?? '';
+        if ($user instanceof PasswordAuthenticatedUserInterface || method_exists($user, 'getPassword')) {
+            return $user->getPassword() ?? '';
+        }
+
+        // @codeCoverageIgnoreStart
+        // Unreachable on Symfony 5.4/6.x, where UserInterface still requires
+        // getPassword(); only a Symfony 7 user class can end up here.
+        throw new UnexpectedValueException(sprintf(
+            'Cannot read a WSSE secret from "%s": it must implement "%s" or "%s".',
+            get_class($user),
+            WSSEUserInterface::class,
+            PasswordAuthenticatedUserInterface::class
+        ));
+        // @codeCoverageIgnoreEnd
     }
 
+    /**
+     * An empty salt is legitimate - unlike the secret, a user without one can
+     * still authenticate - so this falls back to '' rather than failing.
+     */
     protected function getSalt(UserInterface $user): string
     {
         if ($user instanceof WSSEUserInterface) {
             return $user->getWSSESalt();
         }
 
-        return $user->getSalt() ?? '';
+        if ($user instanceof LegacyPasswordAuthenticatedUserInterface || method_exists($user, 'getSalt')) {
+            return $user->getSalt() ?? '';
+        }
+
+        // @codeCoverageIgnoreStart
+        // Unreachable on Symfony 5.4/6.x, where UserInterface still requires getSalt().
+        return '';
+        // @codeCoverageIgnoreEnd
     }
 
     public function getDateFormat(): string
@@ -226,17 +257,10 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             throw new CustomUserMessageAuthenticationException('Token has expired.');
         }
 
-        $nonceCacheItem = $this->nonceCache->getItem('wsse_nonce_' . md5($nonce));
+        $nonceCacheItem = $this->nonceCache->getItem('wsse_nonce_' . hash('sha256', $nonce));
         if ($nonceCacheItem->isHit()) {
             throw new CustomUserMessageAuthenticationException('Previously used nonce detected.');
         }
-
-        $nonceCacheItem
-            ->set(strtotime($this->getCurrentTime()))
-            ->expiresAfter($this->options['lifetime'])
-        ;
-
-        $this->nonceCache->save($nonceCacheItem);
 
         //validate secret
         $expected = $this->passwordHasher->hash(
@@ -249,10 +273,23 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             $salt
         );
 
-        return hash_equals($expected, $digest);
+        if (!hash_equals($expected, $digest)) {
+            return false;
+        }
+
+        //only burn the nonce once the request proved to be genuine, so that
+        //unauthenticated traffic cannot fill the cache pool
+        $nonceCacheItem
+            ->set(strtotime($this->getCurrentTime()))
+            ->expiresAfter($this->options['lifetime'])
+        ;
+
+        $this->nonceCache->save($nonceCacheItem);
+
+        return true;
     }
 
-    public function start(Request $request, AuthenticationException $authException = null): Response
+    public function start(Request $request, ?AuthenticationException $authException = null): Response
     {
         return new Response('', Response::HTTP_UNAUTHORIZED, [
             'WWW-Authenticate' => sprintf(
