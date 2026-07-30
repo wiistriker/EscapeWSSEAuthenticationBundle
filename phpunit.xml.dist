@@ -22,8 +22,5 @@
             <directory suffix=".php">./Security</directory>
             <file>./EscapeWSSEAuthenticationBundle.php</file>
         </include>
-        <report>
-            <html outputDirectory="build/coverage"/>
-        </report>
     </coverage>
 </phpunit>
