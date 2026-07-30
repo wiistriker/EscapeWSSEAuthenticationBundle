@@ -35,7 +35,7 @@ class EscapeWSSEAuthenticationExtensionTest extends TestCase
         $authenticator = $container->getDefinition('escape_wsse_authentication.authenticator');
 
         $this->assertTrue($authenticator->isAbstract());
-        $this->assertEquals(new Reference('app.cache'), $authenticator->getArgument('$nonceCache'));
+        $this->assertEquals(new Reference('cache.app'), $authenticator->getArgument('$nonceCache'));
         $this->assertSame([], $authenticator->getArgument('$options'));
     }
 
@@ -46,7 +46,7 @@ class EscapeWSSEAuthenticationExtensionTest extends TestCase
         (new EscapeWSSEAuthenticationExtension())->load([
             [
                 'authentication_encoder_class' => 'App\Security\CustomHasher',
-                'nonce_cache_service' => 'cache.app',
+                'nonce_cache_service' => 'app.wsse_nonce_cache',
             ],
         ], $container);
 
@@ -55,7 +55,7 @@ class EscapeWSSEAuthenticationExtensionTest extends TestCase
             $container->getParameter('escape_wsse_authentication.encoder.class')
         );
         $this->assertEquals(
-            new Reference('cache.app'),
+            new Reference('app.wsse_nonce_cache'),
             $container->getDefinition('escape_wsse_authentication.authenticator')->getArgument('$nonceCache')
         );
     }

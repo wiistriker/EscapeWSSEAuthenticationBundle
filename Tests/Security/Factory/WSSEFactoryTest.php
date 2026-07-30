@@ -162,11 +162,11 @@ class WSSEFactoryTest extends TestCase
     }
 
     /**
-     * NOTE: this asserts current behaviour - a failure handler is wired in even
-     * when the firewall does not configure one, which makes the null branch in
-     * WSSEAuthenticator::onAuthenticationFailure() unreachable.
+     * A firewall that configures no failure handler must not get the default one:
+     * it redirects and touches the session, which cannot work on the stateless
+     * firewalls WSSE targets, and it would swallow the 401 challenge.
      */
-    public function testCreateAuthenticatorAlwaysWiresAFailureHandler()
+    public function testCreateAuthenticatorWiresNoFailureHandlerByDefault()
     {
         $container = new ContainerBuilder();
 
@@ -183,7 +183,29 @@ class WSSEFactoryTest extends TestCase
             'some.user_provider'
         );
 
-        $failureHandlerId = 'security.authentication.failure_handler.baz-firewall.wsse';
+        $this->assertNull($container->getDefinition($authenticatorId)->getArgument('$failureHandler'));
+        $this->assertFalse($container->hasDefinition('security.authentication.failure_handler.baz-firewall.wsse'));
+    }
+
+    public function testCreateAuthenticatorWiresAConfiguredFailureHandler()
+    {
+        $container = new ContainerBuilder();
+
+        $authenticatorId = (new WSSEFactory())->createAuthenticator(
+            $container,
+            'qux-firewall',
+            [
+                'realm' => 'somerealm',
+                'profile' => 'someprofile',
+                'lifetime' => 300,
+                'date_format' => self::DATE_FORMAT,
+                'nonce_cache_service' => null,
+                'failure_handler' => 'app.wsse.failure_handler',
+            ],
+            'some.user_provider'
+        );
+
+        $failureHandlerId = 'security.authentication.failure_handler.qux-firewall.wsse';
 
         $this->assertTrue($container->hasDefinition($failureHandlerId));
         $this->assertEquals(

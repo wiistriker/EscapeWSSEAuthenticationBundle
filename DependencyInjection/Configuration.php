@@ -15,7 +15,7 @@ class Configuration implements ConfigurationInterface
         $treeBuilder->getRootNode()
             ->children()
                 ->scalarNode('authentication_encoder_class')->defaultValue(MessageDigestPasswordHasher::class)->end()
-                ->scalarNode('nonce_cache_service')->defaultValue('app.cache')->end()
+                ->scalarNode('nonce_cache_service')->defaultValue('cache.app')->end()
             ->end()
         ;
 

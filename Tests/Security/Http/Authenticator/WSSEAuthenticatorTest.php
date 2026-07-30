@@ -121,6 +121,32 @@ class WSSEAuthenticatorTest extends TestCase
         $this->assertSame($user, $authenticator->authenticate($request)->getUser());
     }
 
+    /**
+     * A token older than the lifetime must not be mistaken for a future one:
+     * the skew allowance only applies to timestamps ahead of the server clock.
+     */
+    public function testTokenOlderThanTheSkewAllowanceIsNotReportedAsFromTheFuture()
+    {
+        $user = new ModernUser('someuser', 'somesecret', 'somesalt');
+        $authenticator = $this->createAuthenticator(new ModernUserProvider(['someuser' => $user]));
+
+        $created = gmdate(DATE_ATOM, time() - 120);
+        $request = $this->createWSSERequest('someuser', 'somenonce', $created, $this->digest('somenonce', $created, 'somesecret', 'somesalt'));
+
+        $this->assertTrue($authenticator->supports($request));
+        $this->assertSame($user, $authenticator->authenticate($request)->getUser());
+    }
+
+    public function testAuthenticateThrowsWhenRequestCarriesNoUsableHeader()
+    {
+        $authenticator = $this->createAuthenticator($this->createLegacyProvider());
+
+        $this->expectException(BadCredentialsException::class);
+        $this->expectExceptionMessage('WSSE authentication failed.');
+
+        $authenticator->authenticate(Request::create('/'));
+    }
+
     public function testAuthenticateThrowsWhenUserIsNotFound()
     {
         $authenticator = $this->createAuthenticator(new ModernUserProvider());
@@ -204,20 +230,10 @@ class WSSEAuthenticatorTest extends TestCase
         $authenticator->authenticate($request);
     }
 
-    /**
-     * NOTE: "future_allowed_seconds" has to be raised above "lifetime" for this
-     * branch to be reachable at all. isTokenFromFuture() compares abs($delta),
-     * so with the defaults (61 vs 300) every token older than 61 seconds is
-     * rejected as "Future token detected." before the lifetime check runs.
-     * Once that is fixed, this test should be reduced to plain defaults.
-     */
     public function testAuthenticateThrowsOnExpiredToken()
     {
         $user = new ModernUser('someuser', 'somesecret', 'somesalt');
-        $authenticator = $this->createAuthenticator(
-            new ModernUserProvider(['someuser' => $user]),
-            ['lifetime' => 300, 'future_allowed_seconds' => 100000]
-        );
+        $authenticator = $this->createAuthenticator(new ModernUserProvider(['someuser' => $user]));
 
         $created = gmdate(DATE_ATOM, time() - 400);
         $request = $this->createWSSERequest('someuser', 'somenonce', $created, $this->digest('somenonce', $created, 'somesecret', 'somesalt'));

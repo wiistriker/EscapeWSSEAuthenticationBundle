@@ -30,8 +30,6 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
     protected ?AuthenticationFailureHandlerInterface $failureHandler;
     protected array $options;
 
-    protected ?array $wsse_header = null;
-
     public function __construct(
         UserProviderInterface $userProvider,
         PasswordHasherInterface $passwordHasher,
@@ -50,40 +48,30 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
 
     public function supports(Request $request): ?bool
     {
-        if (!$request->headers->has('X-WSSE')) {
-            return false;
-        }
-
-        $wsse_header = $this->parseWSSEHeader($request->headers->get('X-WSSE'));
-        if (!$wsse_header) {
-            return false;
-        }
-
-        if ($request->headers->get('X-WSSE-Username-Encoded')) {
-            $wsse_header['Username'] = urldecode($wsse_header['Username']);
-        }
-
-        $this->wsse_header = $wsse_header;
-
-        return true;
+        return null !== $this->getWSSEHeader($request);
     }
 
     public function authenticate(Request $request): Passport
     {
+        $wsseHeader = $this->getWSSEHeader($request);
+        if (null === $wsseHeader) {
+            throw new BadCredentialsException('WSSE authentication failed.');
+        }
+
         try {
             if (method_exists($this->userProvider, 'loadUserByIdentifier')) {
-                $user = $this->userProvider->loadUserByIdentifier($this->wsse_header['Username']);
+                $user = $this->userProvider->loadUserByIdentifier($wsseHeader['Username']);
             } else {
-                $user = $this->userProvider->loadUserByUsername($this->wsse_header['Username']);
+                $user = $this->userProvider->loadUserByUsername($wsseHeader['Username']);
             }
         } catch (UserNotFoundException $e) {
             throw new BadCredentialsException('WSSE authentication failed.');
         }
 
         if ($this->validateDigest(
-            $this->wsse_header['PasswordDigest'],
-            $this->wsse_header['Nonce'],
-            $this->wsse_header['Created'],
+            $wsseHeader['PasswordDigest'],
+            $wsseHeader['Nonce'],
+            $wsseHeader['Created'],
             $this->getSecret($user),
             $this->getSalt($user)
         )) {
@@ -119,9 +107,9 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
      * This method returns the value of a bit header by the key
      * @throws UnexpectedValueException
      */
-    private function parseWSSEHeaderValue(string $wsse_header, string $key): string
+    private function parseWSSEHeaderValue(string $wsseHeader, string $key): string
     {
-        if (!preg_match('/'.$key.'="([^"]+)"/', $wsse_header, $matches)) {
+        if (!preg_match('/'.$key.'="([^"]+)"/', $wsseHeader, $matches)) {
             throw new UnexpectedValueException('The string was not found');
         }
 
@@ -134,14 +122,14 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
      * If Username, PasswordDigest, Nonce and Created exist then it returns their value,
      * otherwise the method returns null.
      */
-    protected function parseWSSEHeader(string $wsse_header): ?array
+    protected function parseWSSEHeader(string $wsseHeader): ?array
     {
         try {
             $result = [
-                'Username' => $this->parseWSSEHeaderValue($wsse_header, 'Username'),
-                'PasswordDigest' => $this->parseWSSEHeaderValue($wsse_header, 'PasswordDigest'),
-                'Nonce' => $this->parseWSSEHeaderValue($wsse_header, 'Nonce'),
-                'Created' => $this->parseWSSEHeaderValue($wsse_header, 'Created')
+                'Username' => $this->parseWSSEHeaderValue($wsseHeader, 'Username'),
+                'PasswordDigest' => $this->parseWSSEHeaderValue($wsseHeader, 'PasswordDigest'),
+                'Nonce' => $this->parseWSSEHeaderValue($wsseHeader, 'Nonce'),
+                'Created' => $this->parseWSSEHeaderValue($wsseHeader, 'Created')
             ];
         } catch (UnexpectedValueException $e) {
             return null;
@@ -150,14 +138,47 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
         return $result;
     }
 
+    /**
+     * Reads and parses the credentials carried by the request, or null when the
+     * request carries no usable X-WSSE header.
+     *
+     * This is deliberately derived from the request on every call rather than
+     * cached on the authenticator: the authenticator is a shared service, so
+     * state kept here would leak between sub-requests, between firewalls and -
+     * in a worker runtime - between requests.
+     */
+    protected function getWSSEHeader(Request $request): ?array
+    {
+        $wsseHeader = $request->headers->get('X-WSSE');
+        if (null === $wsseHeader) {
+            return null;
+        }
+
+        $wsseHeader = $this->parseWSSEHeader($wsseHeader);
+        if (null === $wsseHeader) {
+            return null;
+        }
+
+        if ($request->headers->has('X-WSSE-Username-Encoded')) {
+            $wsseHeader['Username'] = urldecode($wsseHeader['Username']);
+        }
+
+        return $wsseHeader;
+    }
+
     protected function isFormattedCorrectly($created): bool
     {
         return preg_match($this->getDateFormat(), $created);
     }
 
+    /**
+     * Tokens dated slightly ahead of us are tolerated to absorb clock skew
+     * between client and server. Note that this must not use abs(): tokens from
+     * the past are the lifetime check's business, not this one's.
+     */
     protected function isTokenFromFuture($created): bool
     {
-        return abs(strtotime($created) - strtotime($this->getCurrentTime())) > $this->options['future_allowed_seconds'];
+        return strtotime($created) - strtotime($this->getCurrentTime()) > $this->options['future_allowed_seconds'];
     }
 
     protected function getCurrentTime(): string
