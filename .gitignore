@@ -1,6 +1,18 @@
-cache.properties
-phpunit.xml
-composer.lock
-composer.phar
-vendor/
-build/
+# Composer
+/vendor/
+/composer.lock
+/composer.phar
+
+# Test & build artifacts
+/build/
+/phpunit.xml
+/.phpunit.result.cache
+/.phpunit.cache/
+/cache.properties
+
+# IDE
+/.idea/
+/.vscode/
+
+# OS
+.DS_Store

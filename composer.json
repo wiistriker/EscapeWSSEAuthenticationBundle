@@ -19,14 +19,16 @@
         "php": "^8.0",
         "symfony/framework-bundle": "^5.0",
         "symfony/security-bundle": "^5.0",
+        "symfony/yaml": "^5.0",
         "doctrine/common": "~2.2 || ~3.0"
     },
     "require-dev": {
         "symfony/finder": "^5.0",
-        "symfony/phpunit-bridge": "^5.0"
+        "symfony/phpunit-bridge": "^5.0",
+        "phpunit/phpunit": "^9.6"
     },
     "autoload": {
-        "psr-0": { "Escape\\WSSEAuthenticationBundle": "" }
-    },
-    "target-dir": "Escape/WSSEAuthenticationBundle"
+        "psr-4": { "Escape\\WSSEAuthenticationBundle\\": "" },
+        "exclude-from-classmap": [ "/Tests/" ]
+    }
 }
