@@ -40,7 +40,7 @@ class WSSEAuthenticatorTest extends TestCase
      */
     public function testSupports(Request $request, ?bool $expected)
     {
-        $this->assertSame($expected, $this->createAuthenticator($this->createLegacyProvider())->supports($request));
+        $this->assertSame($expected, $this->createAuthenticator($this->createProviderMock())->supports($request));
     }
 
     public function provideSupports(): array
@@ -64,10 +64,11 @@ class WSSEAuthenticatorTest extends TestCase
     }
 
     /**
-     * Covers the fallbacks to loadUserByUsername()/getUsername(). They are dead
-     * code from Symfony 6 on, where both interfaces declare the identifier-based
-     * methods for real - a user class without getUserIdentifier() cannot even be
-     * declared there, hence the skip rather than a version-independent test.
+     * Covers the fallbacks to loadUserByUsername() and getUsername(), which are
+     * dead code from Symfony 6 on: there both interfaces declare the
+     * identifier-based methods for real, and a user class without
+     * getUserIdentifier() cannot even be declared - hence the skip rather than a
+     * version-independent test.
      */
     public function testAuthenticateWithPreSymfony6UserApi()
     {
@@ -76,7 +77,7 @@ class WSSEAuthenticatorTest extends TestCase
         }
 
         $user = new LegacyUser('someuser', 'somesecret', 'somesalt');
-        $authenticator = $this->createAuthenticator($this->createLegacyProvider($user));
+        $authenticator = $this->createAuthenticator($this->createProviderMock($user));
 
         $created = gmdate(DATE_ATOM);
         $request = $this->createWSSERequest('someuser', 'somenonce', $created, $this->digest('somenonce', $created, 'somesecret', 'somesalt'));
@@ -149,7 +150,7 @@ class WSSEAuthenticatorTest extends TestCase
 
     public function testAuthenticateThrowsWhenRequestCarriesNoUsableHeader()
     {
-        $authenticator = $this->createAuthenticator($this->createLegacyProvider());
+        $authenticator = $this->createAuthenticator($this->createProviderMock());
 
         $this->expectException(BadCredentialsException::class);
         $this->expectExceptionMessage('WSSE authentication failed.');
@@ -259,7 +260,7 @@ class WSSEAuthenticatorTest extends TestCase
     public function testOnAuthenticationSuccessReturnsNull()
     {
         $this->assertNull(
-            $this->createAuthenticator($this->createLegacyProvider())->onAuthenticationSuccess(
+            $this->createAuthenticator($this->createProviderMock())->onAuthenticationSuccess(
                 Request::create('/'),
                 $this->createMock(TokenInterface::class),
                 'somefirewall'
@@ -270,7 +271,7 @@ class WSSEAuthenticatorTest extends TestCase
     public function testOnAuthenticationFailureReturnsNullWithoutHandler()
     {
         $this->assertNull(
-            $this->createAuthenticator($this->createLegacyProvider())->onAuthenticationFailure(
+            $this->createAuthenticator($this->createProviderMock())->onAuthenticationFailure(
                 Request::create('/'),
                 new AuthenticationException()
             )
@@ -289,14 +290,14 @@ class WSSEAuthenticatorTest extends TestCase
             ->with($request, $exception)
             ->willReturn($response);
 
-        $authenticator = $this->createAuthenticator($this->createLegacyProvider(), [], $handler);
+        $authenticator = $this->createAuthenticator($this->createProviderMock(), [], $handler);
 
         $this->assertSame($response, $authenticator->onAuthenticationFailure($request, $exception));
     }
 
     public function testStart()
     {
-        $response = $this->createAuthenticator($this->createLegacyProvider())->start(Request::create('/'));
+        $response = $this->createAuthenticator($this->createProviderMock())->start(Request::create('/'));
 
         $this->assertSame(Response::HTTP_UNAUTHORIZED, $response->getStatusCode());
         $this->assertSame(
@@ -307,7 +308,7 @@ class WSSEAuthenticatorTest extends TestCase
 
     public function testGetDateFormat()
     {
-        $this->assertSame(self::DATE_FORMAT, $this->createAuthenticator($this->createLegacyProvider())->getDateFormat());
+        $this->assertSame(self::DATE_FORMAT, $this->createAuthenticator($this->createProviderMock())->getDateFormat());
     }
 
     private function createAuthenticator(
@@ -336,7 +337,7 @@ class WSSEAuthenticatorTest extends TestCase
      * From Symfony 7 on it is a real interface method and the fallback is gone,
      * hence the lookup below.
      */
-    private function createLegacyProvider(?UserInterface $user = null): UserProviderInterface
+    private function createProviderMock(?UserInterface $user = null): UserProviderInterface
     {
         $provider = $this->createMock(UserProviderInterface::class);
 

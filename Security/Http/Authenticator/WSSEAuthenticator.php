@@ -77,15 +77,17 @@ class WSSEAuthenticator extends AbstractAuthenticator implements AuthenticationE
             $this->getSecret($user),
             $this->getSalt($user)
         )) {
+            //getUserIdentifier() does not exist before Symfony 5.3, getUsername()
+            //is gone from 6.0 on - so neither can be called unconditionally
             if (method_exists($user, 'getUserIdentifier')) {
                 return new SelfValidatingPassport(
                     new UserBadge($user->getUserIdentifier(), static function () use ($user) { return $user; })
                 );
-            } else {
-                return new SelfValidatingPassport(
-                    new UserBadge($user->getUsername(), static function () use ($user) { return $user; })
-                );
             }
+
+            return new SelfValidatingPassport(
+                new UserBadge($user->getUsername(), static function () use ($user) { return $user; })
+            );
         }
 
         throw new BadCredentialsException('WSSE authentication failed.');

@@ -2,7 +2,7 @@
 
 WSSE authentication for Symfony, built on the authenticator-based security system.
 
-Supports Symfony 5.4, 6.4 and 7.x on PHP 8.0+.
+Supports Symfony 5.4, 6.x and 7.x on PHP 8.0+.
 
 ## Installation
 
